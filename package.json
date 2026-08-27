@@ -1,0 +1,14 @@
+{
+  "name": "ram-berkah-sawit-tua",
+  "version": "1.0.0",
+  "description": "RAM Berkah Sawit Tua - Palm Oil Weighing & Order Management PWA",
+  "scripts": {
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:backend": "npm --prefix backend run dev",
+    "build:frontend": "npm --prefix frontend run build",
+    "start:backend": "npm --prefix backend start"
+  },
+  "keywords": ["palm-oil", "ram-sawit", "weighing-scale", "thermal-printer", "pwa", "esc-pos"],
+  "author": "",
+  "license": "ISC"
+}

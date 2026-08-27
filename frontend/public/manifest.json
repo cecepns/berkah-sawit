@@ -1,0 +1,16 @@
+{
+  "short_name": "RAM Sawit",
+  "name": "RAM Berkah Sawit Tua",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "192x192 512x512"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#ffffff",
+  "theme_color": "#16A34A",
+  "display": "standalone",
+  "orientation": "portrait-primary"
+}
