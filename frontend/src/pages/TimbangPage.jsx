@@ -58,6 +58,7 @@ export const TimbangPage = () => {
   const [sortation, setSortation] = useState('Matang');
   const [deductionPercent, setDeductionPercent] = useState(0);
   const [pricePerKg, setPricePerKg] = useState(2650);
+  const [loadingFeePerKg, setLoadingFeePerKg] = useState(10);
   const [notes, setNotes] = useState('');
 
   // Master Lists for Autocomplete & Dropdowns
@@ -90,7 +91,10 @@ export const TimbangPage = () => {
   const deductionKg = Math.round(((netto * pct) / 100) * 100) / 100;
   const cleanKg = Math.max(0, Math.round((netto - deductionKg) * 100) / 100);
   const price = parseFloat(pricePerKg) || 0;
-  const totalPrice = Math.round(cleanKg * price);
+  const loadingFeeRate = parseFloat(loadingFeePerKg) || 0;
+  const loadingFee = Math.round(netto * loadingFeeRate);
+  const grossTotal = Math.round(cleanKg * price);
+  const totalPrice = Math.max(0, grossTotal - loadingFee);
 
   // Fetch Ticket Number, Masters & Today's Price
   const generateTicket = async () => {
@@ -125,7 +129,7 @@ export const TimbangPage = () => {
       if (cached && cached.length > 0) setSuppliers(cached);
     }
 
-    // 2. Today Price
+    // 2. Today Price & Default Loading Fee
     try {
       const priceRes = await request.get(API_ENDPOINTS.PRICES.TODAY);
       if (priceRes.success && priceRes.price_per_kg) {
@@ -133,6 +137,10 @@ export const TimbangPage = () => {
       }
     } catch {
       if (settings.default_price) setPricePerKg(settings.default_price);
+    }
+
+    if (settings.default_loading_fee !== undefined) {
+      setLoadingFeePerKg(settings.default_loading_fee);
     }
 
     // 3. Autocomplete Drivers & Vehicles
@@ -170,6 +178,7 @@ export const TimbangPage = () => {
         setSortation(draft.sortation || 'Matang');
         setDeductionPercent(draft.deductionPercent || 0);
         if (draft.pricePerKg) setPricePerKg(draft.pricePerKg);
+        if (draft.loadingFeePerKg !== undefined) setLoadingFeePerKg(draft.loadingFeePerKg);
         toast('Melanjutkan draf timbangan sebelumnya');
       }
     });
@@ -191,9 +200,10 @@ export const TimbangPage = () => {
         sortation,
         deductionPercent,
         pricePerKg,
+        loadingFeePerKg,
       });
     }
-  }, [supplierId, supplierName, supplierDo, driverName, plateNumber, origin, block, grossKg, tareKg, sortation, deductionPercent, pricePerKg]);
+  }, [supplierId, supplierName, supplierDo, driverName, plateNumber, origin, block, grossKg, tareKg, sortation, deductionPercent, pricePerKg, loadingFeePerKg]);
 
   // Async Supplier Options Loader (Search by API with Offline Cache fallback)
   const loadSupplierOptions = useCallback(async (inputValue) => {
@@ -370,6 +380,8 @@ export const TimbangPage = () => {
       deduction_kg: deductionKg,
       clean_kg: cleanKg,
       price_per_kg: price,
+      loading_fee_per_kg: loadingFeeRate,
+      loading_fee: loadingFee,
       total_price: totalPrice,
       transaction_date: now.toISOString().split('T')[0],
       transaction_time: now.toTimeString().split(' ')[0].slice(0, 5),
@@ -829,14 +841,14 @@ export const TimbangPage = () => {
         <div className="bg-white dark:bg-zinc-900 p-4 sm:p-5 rounded-2xl border border-gray-100 dark:border-zinc-800 shadow-sm space-y-4">
           <div className="flex items-center justify-between border-b border-gray-100 dark:border-zinc-800/80 pb-2.5">
             <h2 className="text-sm font-extrabold text-gray-900 dark:text-white flex items-center gap-2 uppercase tracking-wide">
-              % Potongan, Sortasi & Harga
+              % Potongan, Sortasi, Harga & Biaya Bongkar
             </h2>
             <span className="text-xs font-bold text-gray-500 font-mono">
               BERSIH: {cleanKg.toLocaleString('id-ID')} KG
             </span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
             {/* Sortasi Selector */}
             <div>
               <label className="text-xs font-bold text-gray-700 dark:text-zinc-300 block mb-1">
@@ -906,10 +918,28 @@ export const TimbangPage = () => {
                 />
               </div>
             </div>
+
+            {/* Loading Fee (Biaya Bongkar) / KG */}
+            <div>
+              <label className="text-xs font-bold text-gray-700 dark:text-zinc-300 block mb-1">
+                Biaya Bongkar / KG
+              </label>
+              <div className="relative">
+                <span className="absolute left-3.5 top-2.5 text-xs font-bold text-gray-400">Rp</span>
+                <input
+                  type="number"
+                  step="any"
+                  value={loadingFeePerKg}
+                  onChange={(e) => setLoadingFeePerKg(e.target.value)}
+                  placeholder="10"
+                  className="w-full pl-9 pr-3 py-2.5 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl text-base font-mono font-extrabold text-gray-900 dark:text-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                />
+              </div>
+            </div>
           </div>
 
           {/* Breakdown summary pills */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-2 text-xs">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 text-xs">
             <div className="p-2.5 bg-gray-50 dark:bg-zinc-800/50 rounded-xl border border-gray-100 dark:border-zinc-800">
               <span className="text-gray-500 dark:text-zinc-400 block">Potongan KG:</span>
               <span className="font-bold text-gray-900 dark:text-white font-mono">
@@ -922,7 +952,13 @@ export const TimbangPage = () => {
                 {cleanKg.toLocaleString('id-ID')} KG
               </span>
             </div>
-            <div className="col-span-2 sm:col-span-1 p-2.5 bg-gray-50 dark:bg-zinc-800/50 rounded-xl border border-gray-100 dark:border-zinc-800">
+            <div className="p-2.5 bg-gray-50 dark:bg-zinc-800/50 rounded-xl border border-gray-100 dark:border-zinc-800">
+              <span className="text-gray-500 dark:text-zinc-400 block">Biaya Bongkar:</span>
+              <span className="font-bold text-rose-600 dark:text-rose-400 font-mono">
+                - Rp {loadingFee.toLocaleString('id-ID')}
+              </span>
+            </div>
+            <div className="p-2.5 bg-gray-50 dark:bg-zinc-800/50 rounded-xl border border-gray-100 dark:border-zinc-800">
               <span className="text-gray-500 dark:text-zinc-400 block">Sortasi:</span>
               <span className="font-bold text-gray-900 dark:text-white">{sortation}</span>
             </div>
@@ -939,7 +975,7 @@ export const TimbangPage = () => {
               Rp {totalPrice.toLocaleString('id-ID')}
             </div>
             <p className="text-xs text-emerald-100 mt-1 font-medium">
-              {cleanKg.toLocaleString('id-ID')} kg x Rp {price.toLocaleString('id-ID')} / kg
+              ({cleanKg.toLocaleString('id-ID')} kg x Rp {price.toLocaleString('id-ID')}) - Bongkar: Rp {loadingFee.toLocaleString('id-ID')} ({netto.toLocaleString('id-ID')} kg x Rp {loadingFeeRate})
             </p>
           </div>
 

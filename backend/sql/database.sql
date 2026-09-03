@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS `settings` (
   `receipt_width` VARCHAR(10) NOT NULL DEFAULT '58mm',
   `rounding_rule` VARCHAR(20) NOT NULL DEFAULT 'exact', -- exact, round_nearest, round_floor, round_ceil
   `default_price` DECIMAL(12, 2) NOT NULL DEFAULT 2650.00,
+  `default_loading_fee` DECIMAL(10, 2) NOT NULL DEFAULT 10.00, -- Biaya / upah bongkar default per kg
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -138,8 +139,10 @@ CREATE TABLE IF NOT EXISTS `transactions` (
   `deduction_kg` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
   `clean_kg` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
   
-  -- Pricing
+  -- Pricing & Fees
   `price_per_kg` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+  `loading_fee_per_kg` DECIMAL(10, 2) NOT NULL DEFAULT 10.00,
+  `loading_fee` DECIMAL(14, 2) NOT NULL DEFAULT 0.00,
   `total_price` DECIMAL(14, 2) NOT NULL DEFAULT 0.00,
   
   -- Meta & Operator

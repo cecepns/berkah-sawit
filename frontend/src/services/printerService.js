@@ -147,9 +147,6 @@ class PrinterService {
 
     // 4. Sender & Vehicle
     addText(`SUPPLIER   : ${transaction.supplier_name || '-'}\n`);
-    if (transaction.supplier_do) {
-      addText(`DO / KUD   : ${transaction.supplier_do}\n`);
-    }
     addText(`SOPIR      : ${transaction.driver_name || '-'}\n`);
     addText(`NO POLISI  : ${transaction.plate_number || '-'}\n`);
     if (transaction.origin) {
@@ -173,6 +170,13 @@ class PrinterService {
     addBytes(BOLD_ON);
     addText(formatRow('BERSIH (KG)', `${formatNumber(transaction.clean_kg)} KG`));
     addText(formatRow('HARGA / KG', formatRp(transaction.price_per_kg)));
+    
+    // Biaya Bongkar (Netto * loading_fee_per_kg)
+    const loadingFeePerKg = transaction.loading_fee_per_kg !== undefined ? Number(transaction.loading_fee_per_kg) : 10;
+    const loadingFee = transaction.loading_fee !== undefined ? Number(transaction.loading_fee) : Math.round(Number(transaction.netto_kg || 0) * loadingFeePerKg);
+    if (loadingFee > 0 || loadingFeePerKg > 0) {
+      addText(formatRow(`BONGKAR (@Rp${loadingFeePerKg})`, `- ${formatRp(loadingFee)}`));
+    }
     addBytes(BOLD_OFF);
     addText(subSeparator);
 

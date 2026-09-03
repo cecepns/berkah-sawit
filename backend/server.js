@@ -65,6 +65,24 @@ async function initDb() {
             // Ignore if already exists or duplicate key
           }
         }
+
+        // Ensure new loading fee columns exist for existing databases
+        try {
+          await pool.query('ALTER TABLE `settings` ADD COLUMN `default_loading_fee` DECIMAL(10, 2) NOT NULL DEFAULT 10.00');
+        } catch (colErr) {
+          // Column may already exist
+        }
+        try {
+          await pool.query('ALTER TABLE `transactions` ADD COLUMN `loading_fee_per_kg` DECIMAL(10, 2) NOT NULL DEFAULT 10.00');
+        } catch (colErr) {
+          // Column may already exist
+        }
+        try {
+          await pool.query('ALTER TABLE `transactions` ADD COLUMN `loading_fee` DECIMAL(14, 2) NOT NULL DEFAULT 0.00');
+        } catch (colErr) {
+          // Column may already exist
+        }
+
         console.log('✅ Database schema verified/initialized');
       }
     } catch (e) {
@@ -254,6 +272,7 @@ app.get('/api/settings', checkDb, async (req, res) => {
           receipt_width: '58mm',
           rounding_rule: 'exact',
           default_price: 2650,
+          default_loading_fee: 10,
         },
       });
     }
@@ -277,23 +296,24 @@ app.put('/api/settings', authenticateToken, requireAdmin, checkDb, async (req, r
       receipt_width,
       rounding_rule,
       default_price,
+      default_loading_fee,
     } = req.body;
 
     const [rows] = await pool.query('SELECT id FROM settings LIMIT 1');
     if (rows.length === 0) {
       await pool.query(
-        `INSERT INTO settings (ram_name, ram_code, location_line1, location_line2, phone, address, ticket_prefix, receipt_footer, receipt_width, rounding_rule, default_price)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [ram_name || 'RAM BERKAH SAWIT TUA', ram_code || 'BST', location_line1 || 'Tanjung Enim', location_line2 || '', phone || '', address || '', ticket_prefix || 'BST', receipt_footer || '', receipt_width || '58mm', rounding_rule || 'exact', default_price || 2650]
+        `INSERT INTO settings (ram_name, ram_code, location_line1, location_line2, phone, address, ticket_prefix, receipt_footer, receipt_width, rounding_rule, default_price, default_loading_fee)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [ram_name || 'RAM BERKAH SAWIT TUA', ram_code || 'BST', location_line1 || 'Tanjung Enim', location_line2 || '', phone || '', address || '', ticket_prefix || 'BST', receipt_footer || '', receipt_width || '58mm', rounding_rule || 'exact', default_price || 2650, default_loading_fee !== undefined ? Number(default_loading_fee) : 10]
       );
     } else {
       await pool.query(
         `UPDATE settings SET 
          ram_name = ?, ram_code = ?, location_line1 = ?, location_line2 = ?, 
          phone = ?, address = ?, ticket_prefix = ?, receipt_footer = ?, 
-         receipt_width = ?, rounding_rule = ?, default_price = ?
+         receipt_width = ?, rounding_rule = ?, default_price = ?, default_loading_fee = ?
          WHERE id = ?`,
-        [ram_name, ram_code, location_line1, location_line2, phone, address, ticket_prefix, receipt_footer, receipt_width, rounding_rule, default_price, rows[0].id]
+        [ram_name, ram_code, location_line1, location_line2, phone, address, ticket_prefix, receipt_footer, receipt_width, rounding_rule, default_price, default_loading_fee !== undefined ? Number(default_loading_fee) : 10, rows[0].id]
       );
     }
 
@@ -479,6 +499,8 @@ app.post('/api/transactions', authenticateToken, checkDb, async (req, res) => {
       deduction_kg,
       clean_kg,
       price_per_kg,
+      loading_fee_per_kg,
+      loading_fee,
       total_price,
       transaction_date,
       transaction_time,
@@ -522,17 +544,26 @@ app.post('/api/transactions', authenticateToken, checkDb, async (req, res) => {
       // Non-blocking
     }
 
+    const nGross = Number(gross_kg) || 0;
+    const nTare = Number(tare_kg) || 0;
+    const nNetto = Number(netto_kg) || Math.max(0, nGross - nTare);
+    const nClean = Number(clean_kg) || 0;
+    const nPrice = Number(price_per_kg) || 0;
+    const nLoadingFeePerKg = loading_fee_per_kg !== undefined ? Number(loading_fee_per_kg) : 10;
+    const nLoadingFee = loading_fee !== undefined ? Number(loading_fee) : Math.round(nNetto * nLoadingFeePerKg);
+    const nTotalPrice = total_price !== undefined ? Number(total_price) : Math.max(0, Math.round(nClean * nPrice) - nLoadingFee);
+
     const [result] = await pool.query(
       `INSERT INTO transactions (
         ticket_number, supplier_id, supplier_name, supplier_do,
         driver_name, plate_number, origin, block,
         gross_kg, tare_kg, netto_kg,
         sortation, deduction_percent, deduction_kg, clean_kg,
-        price_per_kg, total_price,
+        price_per_kg, loading_fee_per_kg, loading_fee, total_price,
         transaction_date, transaction_time,
         operator_id, operator_name, notes,
         status, sync_status, local_uuid
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?)`,
       [
         ticket_number,
         supplier_id || null,
@@ -542,15 +573,17 @@ app.post('/api/transactions', authenticateToken, checkDb, async (req, res) => {
         plate_number.toUpperCase(),
         origin || null,
         block || null,
-        Number(gross_kg) || 0,
-        Number(tare_kg) || 0,
-        Number(netto_kg) || 0,
+        nGross,
+        nTare,
+        nNetto,
         sortation || 'Matang',
         Number(deduction_percent) || 0,
         Number(deduction_kg) || 0,
-        Number(clean_kg) || 0,
-        Number(price_per_kg) || 0,
-        Number(total_price) || 0,
+        nClean,
+        nPrice,
+        nLoadingFeePerKg,
+        nLoadingFee,
+        nTotalPrice,
         finalDate,
         finalTime,
         finalOperatorId,
@@ -562,7 +595,7 @@ app.post('/api/transactions', authenticateToken, checkDb, async (req, res) => {
     );
 
     const newId = result.insertId;
-    await logAudit(req.user.id, req.user.name, 'CREATE_TRANSACTION', 'transactions', newId, { ticket_number, total_price, clean_kg }, req);
+    await logAudit(req.user.id, req.user.name, 'CREATE_TRANSACTION', 'transactions', newId, { ticket_number, total_price: nTotalPrice, clean_kg: nClean, loading_fee: nLoadingFee }, req);
 
     res.status(201).json({
       success: true,
@@ -570,8 +603,9 @@ app.post('/api/transactions', authenticateToken, checkDb, async (req, res) => {
       data: {
         id: newId,
         ticket_number,
-        clean_kg,
-        total_price,
+        clean_kg: nClean,
+        loading_fee: nLoadingFee,
+        total_price: nTotalPrice,
       },
     });
   } catch (error) {
@@ -602,6 +636,8 @@ app.put('/api/transactions/:id', authenticateToken, checkDb, async (req, res) =>
       deduction_kg,
       clean_kg,
       price_per_kg,
+      loading_fee_per_kg,
+      loading_fee,
       total_price,
       notes,
     } = req.body;
@@ -615,13 +651,22 @@ app.put('/api/transactions/:id', authenticateToken, checkDb, async (req, res) =>
       return res.status(404).json({ success: false, message: 'Transaksi tidak ditemukan' });
     }
 
+    const nGross = Number(gross_kg) || 0;
+    const nTare = Number(tare_kg) || 0;
+    const nNetto = Number(netto_kg) || Math.max(0, nGross - nTare);
+    const nClean = Number(clean_kg) || 0;
+    const nPrice = Number(price_per_kg) || 0;
+    const nLoadingFeePerKg = loading_fee_per_kg !== undefined ? Number(loading_fee_per_kg) : 10;
+    const nLoadingFee = loading_fee !== undefined ? Number(loading_fee) : Math.round(nNetto * nLoadingFeePerKg);
+    const nTotalPrice = total_price !== undefined ? Number(total_price) : Math.max(0, Math.round(nClean * nPrice) - nLoadingFee);
+
     await pool.query(
       `UPDATE transactions SET
         supplier_id = ?, supplier_name = ?, supplier_do = ?,
         driver_name = ?, plate_number = ?, origin = ?, block = ?,
         gross_kg = ?, tare_kg = ?, netto_kg = ?,
         sortation = ?, deduction_percent = ?, deduction_kg = ?, clean_kg = ?,
-        price_per_kg = ?, total_price = ?, notes = ?
+        price_per_kg = ?, loading_fee_per_kg = ?, loading_fee = ?, total_price = ?, notes = ?
       WHERE id = ?`,
       [
         supplier_id || null,
@@ -631,15 +676,17 @@ app.put('/api/transactions/:id', authenticateToken, checkDb, async (req, res) =>
         plate_number.toUpperCase(),
         origin || null,
         block || null,
-        Number(gross_kg) || 0,
-        Number(tare_kg) || 0,
-        Number(netto_kg) || 0,
+        nGross,
+        nTare,
+        nNetto,
         sortation || 'Matang',
         Number(deduction_percent) || 0,
         Number(deduction_kg) || 0,
-        Number(clean_kg) || 0,
-        Number(price_per_kg) || 0,
-        Number(total_price) || 0,
+        nClean,
+        nPrice,
+        nLoadingFeePerKg,
+        nLoadingFee,
+        nTotalPrice,
         notes || null,
         id,
       ]
@@ -703,17 +750,26 @@ app.post('/api/transactions/sync', authenticateToken, checkDb, async (req, res) 
         );
 
         if (existing.length === 0) {
+          const nGross = Number(item.gross_kg) || 0;
+          const nTare = Number(item.tare_kg) || 0;
+          const nNetto = Number(item.netto_kg) || Math.max(0, nGross - nTare);
+          const nClean = Number(item.clean_kg) || 0;
+          const nPrice = Number(item.price_per_kg) || 0;
+          const nLoadingFeePerKg = item.loading_fee_per_kg !== undefined ? Number(item.loading_fee_per_kg) : 10;
+          const nLoadingFee = item.loading_fee !== undefined ? Number(item.loading_fee) : Math.round(nNetto * nLoadingFeePerKg);
+          const nTotalPrice = item.total_price !== undefined ? Number(item.total_price) : Math.max(0, Math.round(nClean * nPrice) - nLoadingFee);
+
           await pool.query(
             `INSERT INTO transactions (
               ticket_number, supplier_id, supplier_name, supplier_do,
               driver_name, plate_number, origin, block,
               gross_kg, tare_kg, netto_kg,
               sortation, deduction_percent, deduction_kg, clean_kg,
-              price_per_kg, total_price,
+              price_per_kg, loading_fee_per_kg, loading_fee, total_price,
               transaction_date, transaction_time,
               operator_id, operator_name, notes,
               status, sync_status, local_uuid
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced', ?)`,
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced', ?)`,
             [
               item.ticket_number,
               item.supplier_id || null,
@@ -723,15 +779,17 @@ app.post('/api/transactions/sync', authenticateToken, checkDb, async (req, res) 
               item.plate_number.toUpperCase(),
               item.origin || null,
               item.block || null,
-              Number(item.gross_kg) || 0,
-              Number(item.tare_kg) || 0,
-              Number(item.netto_kg) || 0,
+              nGross,
+              nTare,
+              nNetto,
               item.sortation || 'Matang',
               Number(item.deduction_percent) || 0,
               Number(item.deduction_kg) || 0,
-              Number(item.clean_kg) || 0,
-              Number(item.price_per_kg) || 0,
-              Number(item.total_price) || 0,
+              nClean,
+              nPrice,
+              nLoadingFeePerKg,
+              nLoadingFee,
+              nTotalPrice,
               item.transaction_date,
               item.transaction_time,
               req.user.id,
@@ -1036,6 +1094,7 @@ app.get('/api/reports/period', checkDb, async (req, res) => {
         COALESCE(SUM(netto_kg), 0) as netto_kg,
         COALESCE(SUM(deduction_kg), 0) as deduction_kg,
         COALESCE(SUM(clean_kg), 0) as clean_kg,
+        COALESCE(SUM(loading_fee), 0) as loading_fee,
         COALESCE(SUM(total_price), 0) as total_price,
         COALESCE(AVG(price_per_kg), 0) as avg_price
       FROM transactions
@@ -1052,6 +1111,7 @@ app.get('/api/reports/period', checkDb, async (req, res) => {
         COALESCE(SUM(netto_kg), 0) as netto_kg,
         COALESCE(SUM(deduction_kg), 0) as deduction_kg,
         COALESCE(SUM(clean_kg), 0) as clean_kg,
+        COALESCE(SUM(loading_fee), 0) as loading_fee,
         COALESCE(SUM(total_price), 0) as total_price
       FROM transactions
       WHERE transaction_date BETWEEN ? AND ? AND status = 'completed' AND deleted_at IS NULL

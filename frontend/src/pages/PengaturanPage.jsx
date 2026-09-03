@@ -44,6 +44,7 @@ export const PengaturanPage = () => {
     receipt_footer: '',
     receipt_width: '58mm',
     default_price: 2650,
+    default_loading_fee: 10,
   });
 
   // Price Setting State
@@ -76,6 +77,7 @@ export const PengaturanPage = () => {
         receipt_footer: settings.receipt_footer || 'TERIMA KASIH\nRAM BERKAH SAWIT TUA',
         receipt_width: settings.receipt_width || '58mm',
         default_price: settings.default_price || 2650,
+        default_loading_fee: settings.default_loading_fee !== undefined ? settings.default_loading_fee : 10,
       });
       setDailyPriceInput(String(settings.default_price || 2650));
     }
@@ -326,6 +328,23 @@ export const PengaturanPage = () => {
                 placeholder="BST"
                 className="w-full px-3.5 py-2.5 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl text-sm font-mono font-bold uppercase text-gray-900 dark:text-white"
               />
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-gray-700 dark:text-zinc-300 block mb-1">
+                Tarif Standar Biaya Bongkar (Rp / KG)
+              </label>
+              <div className="relative">
+                <span className="absolute left-3.5 top-2.5 text-xs font-bold text-gray-400">Rp</span>
+                <input
+                  type="number"
+                  step="any"
+                  value={identityForm.default_loading_fee}
+                  onChange={(e) => setIdentityForm({ ...identityForm, default_loading_fee: parseFloat(e.target.value) || 0 })}
+                  placeholder="10"
+                  className="w-full pl-9 pr-3.5 py-2.5 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl text-sm font-mono font-bold text-gray-900 dark:text-white focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
             </div>
 
             <div className="sm:col-span-2">

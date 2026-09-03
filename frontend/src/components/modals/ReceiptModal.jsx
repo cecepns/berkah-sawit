@@ -139,11 +139,14 @@ export const ReceiptModal = ({ isOpen, onClose, transaction }) => {
     }, 200);
   };
 
+  const loadingFeePerKg = transaction.loading_fee_per_kg !== undefined ? Number(transaction.loading_fee_per_kg) : 10;
+  const loadingFee = transaction.loading_fee !== undefined ? Number(transaction.loading_fee) : Math.round(Number(transaction.netto_kg || 0) * loadingFeePerKg);
+
   const handleShareWhatsApp = () => {
     const text = `*NOTA TIMBANGAN ${settings.ram_name || 'RAM BERKAH SAWIT TUA'}*
 No. Tiket: ${transaction.ticket_number}
 Tanggal: ${transaction.transaction_date} ${transaction.transaction_time || ''}
-Supplier: ${transaction.supplier_name} ${transaction.supplier_do ? `(${transaction.supplier_do})` : ''}
+Supplier: ${transaction.supplier_name}
 Sopir: ${transaction.driver_name} (${transaction.plate_number})
 Asal: ${transaction.origin || '-'}
 
@@ -154,8 +157,9 @@ Potongan (${transaction.deduction_percent}%): ${formatNumber(transaction.deducti
 Sortasi: ${transaction.sortation || 'Matang'}
 *BERSIH: ${formatNumber(transaction.clean_kg)} KG*
 Harga/KG: ${formatRp(transaction.price_per_kg)}
+Biaya Bongkar (@Rp ${loadingFeePerKg}): - ${formatRp(loadingFee)}
 -----------------------------
-*TOTAL: ${formatRp(transaction.total_price)}*
+*TOTAL PEMBAYARAN: ${formatRp(transaction.total_price)}*
 -----------------------------
 ${settings.receipt_footer || 'Terima Kasih'}`;
 
@@ -262,12 +266,6 @@ ${settings.receipt_footer || 'Terima Kasih'}`;
               <span className="font-semibold">SUPPLIER</span>
               <span className="text-right truncate font-bold">{transaction.supplier_name}</span>
             </div>
-            {transaction.supplier_do && (
-              <div className="flex justify-between text-zinc-600">
-                <span>DO / KUD</span>
-                <span>{transaction.supplier_do}</span>
-              </div>
-            )}
             <div className="flex justify-between">
               <span className="font-semibold">SOPIR</span>
               <span>{transaction.driver_name}</span>
@@ -314,6 +312,12 @@ ${settings.receipt_footer || 'Terima Kasih'}`;
               <span>HARGA / KG</span>
               <span>{formatRp(transaction.price_per_kg)}</span>
             </div>
+            {(loadingFee > 0 || loadingFeePerKg > 0) && (
+              <div className="flex justify-between font-semibold text-zinc-900">
+                <span>BIAYA BONGKAR (@Rp {loadingFeePerKg})</span>
+                <span>- {formatRp(loadingFee)}</span>
+              </div>
+            )}
           </div>
 
           {/* Total Price */}

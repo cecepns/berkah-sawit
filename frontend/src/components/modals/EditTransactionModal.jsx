@@ -17,6 +17,8 @@ export const EditTransactionModal = ({ isOpen, onClose, transaction, onSave }) =
     deduction_kg: 0,
     clean_kg: 0,
     price_per_kg: 2650,
+    loading_fee_per_kg: 10,
+    loading_fee: 0,
     total_price: 0,
     sortation: 'Matang',
     notes: '',
@@ -26,19 +28,27 @@ export const EditTransactionModal = ({ isOpen, onClose, transaction, onSave }) =
 
   useEffect(() => {
     if (transaction) {
+      const gross = Number(transaction.gross_kg) || 0;
+      const tare = Number(transaction.tare_kg) || 0;
+      const netto = Number(transaction.netto_kg) || Math.max(0, gross - tare);
+      const loadingFeePerKg = transaction.loading_fee_per_kg !== undefined ? Number(transaction.loading_fee_per_kg) : 10;
+      const loadingFee = transaction.loading_fee !== undefined ? Number(transaction.loading_fee) : Math.round(netto * loadingFeePerKg);
+
       setFormData({
         supplier_name: transaction.supplier_name || '',
         supplier_do: transaction.supplier_do || '',
         driver_name: transaction.driver_name || '',
         plate_number: transaction.plate_number || '',
         origin: transaction.origin || '',
-        gross_kg: Number(transaction.gross_kg) || 0,
-        tare_kg: Number(transaction.tare_kg) || 0,
-        netto_kg: Number(transaction.netto_kg) || 0,
+        gross_kg: gross,
+        tare_kg: tare,
+        netto_kg: netto,
         deduction_percent: Number(transaction.deduction_percent) || 0,
         deduction_kg: Number(transaction.deduction_kg) || 0,
         clean_kg: Number(transaction.clean_kg) || 0,
         price_per_kg: Number(transaction.price_per_kg) || 0,
+        loading_fee_per_kg: loadingFeePerKg,
+        loading_fee: loadingFee,
         total_price: Number(transaction.total_price) || 0,
         sortation: transaction.sortation || 'Matang',
         notes: transaction.notes || '',
@@ -55,17 +65,20 @@ export const EditTransactionModal = ({ isOpen, onClose, transaction, onSave }) =
     const tare = field === 'tare_kg' ? num : next.tare_kg;
     const pct = field === 'deduction_percent' ? num : next.deduction_percent;
     const price = field === 'price_per_kg' ? num : next.price_per_kg;
+    const loadingRate = field === 'loading_fee_per_kg' ? num : next.loading_fee_per_kg;
 
     const netto = Math.max(0, gross - tare);
     const dedKg = Math.round(((netto * pct) / 100) * 100) / 100;
     const cleanKg = Math.max(0, Math.round((netto - dedKg) * 100) / 100);
-    const total = Math.round(cleanKg * price);
+    const loadFee = Math.round(netto * loadingRate);
+    const total = Math.max(0, Math.round(cleanKg * price) - loadFee);
 
     setFormData({
       ...next,
       netto_kg: netto,
       deduction_kg: dedKg,
       clean_kg: cleanKg,
+      loading_fee: loadFee,
       total_price: total,
     });
   };
@@ -221,8 +234,30 @@ export const EditTransactionModal = ({ isOpen, onClose, transaction, onSave }) =
             </div>
           </div>
 
+          <div className="grid grid-cols-2 gap-3 pt-1 border-t border-gray-100 dark:border-zinc-800">
+            <div>
+              <label className="text-xs font-bold text-gray-700 dark:text-zinc-300 block mb-1">
+                Tarif Bongkar / KG (Rp)
+              </label>
+              <input
+                type="number"
+                value={formData.loading_fee_per_kg}
+                onChange={(e) => handleWeightChange('loading_fee_per_kg', e.target.value)}
+                className="w-full px-3 py-1.5 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-lg text-xs font-mono font-bold"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-gray-700 dark:text-zinc-300 block mb-1">
+                Total Biaya Bongkar
+              </label>
+              <div className="px-3 py-1.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-lg text-xs font-mono font-bold text-rose-600 dark:text-rose-400">
+                - Rp {formData.loading_fee.toLocaleString('id-ID')}
+              </div>
+            </div>
+          </div>
+
           <div className="flex justify-between items-center pt-2 border-t border-gray-200 dark:border-zinc-700">
-            <span className="text-xs font-bold text-gray-700 dark:text-zinc-300">Total Harga:</span>
+            <span className="text-xs font-bold text-gray-700 dark:text-zinc-300">Total Pembayaran Bersih:</span>
             <span className="text-sm font-extrabold text-emerald-600 dark:text-emerald-400 font-mono">
               Rp {formData.total_price.toLocaleString('id-ID')}
             </span>
